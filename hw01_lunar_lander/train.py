@@ -16,8 +16,8 @@ STEPS_PER_TARGET_UPDATE = STEPS_PER_UPDATE * 1000
 BATCH_SIZE = 128
 LEARNING_RATE = 5e-4
 BUFFER_SIZE = int(1e5)
-# DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-DEVICE = torch.device('cpu')
+DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+# DEVICE = torch.device('cpu')
 SEED = 42
 
 
@@ -116,9 +116,9 @@ def create_model(state_dim, action_dim):
     return nn.Sequential(
         nn.Linear(state_dim, 64),
         nn.ReLU(),
-        nn.Linear(64, 64),
+        nn.Linear(64, 32),
         nn.ReLU(),
-        nn.Linear(64, action_dim),
+        nn.Linear(32, action_dim),
     ).to(DEVICE)
 
 
@@ -129,7 +129,7 @@ if __name__ == "__main__":
     torch.manual_seed(SEED)
     torch.cuda.manual_seed(SEED)
     torch.backends.cudnn.deterministic = True
-    torch.use_deterministic_algorithms(True)
+    # torch.use_deterministic_algorithms(True)
     # still random :'(
 
     env = make("LunarLander-v2")
@@ -137,7 +137,10 @@ if __name__ == "__main__":
     env.seed(SEED)
     dqn = DQN(state_dim=env.observation_space.shape[0],
               action_dim=env.action_space.n)
-    eps = 0.1
+    eps_start = 0.5
+    eps_frac = 1.0
+    eps_final = 0.05
+    tau = -TRANSITIONS / np.log(eps_final / eps_start)
     state = env.reset()
 
     for _ in range(INITIAL_STEPS):
@@ -150,6 +153,11 @@ if __name__ == "__main__":
 
     for i in range(TRANSITIONS):
         # Epsilon-greedy policy
+        if i > TRANSITIONS * eps_frac:
+            eps = eps_final
+        else:
+            eps = eps_start * np.exp(-i / tau)
+        # eps = 0.1
         if random.random() < eps:
             action = env.action_space.sample()
         else:
