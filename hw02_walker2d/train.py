@@ -14,11 +14,11 @@ ENV_NAME = "Walker2DBulletEnv-v0"
 LAMBDA = 0.95
 GAMMA = 0.99
 
-ACTOR_LR = 4e-4
-CRITIC_LR = 2e-4
+ACTOR_LR = 2e-4
+CRITIC_LR = 1e-4
 
 CLIP = 0.2
-ENTROPY_COEF = 1e-2
+ENTROPY_COEF = None
 BATCHES_PER_UPDATE = 64
 BATCH_SIZE = 64
 GRAD_CLIP = 0.5
@@ -64,7 +64,7 @@ class Actor(nn.Module):
             nn.Tanh(),
             layer_init(nn.Linear(64, action_dim), std=0.01)
         )
-        self.log_sigma = nn.Parameter(torch.zeros(1, action_dim))
+        self.log_sigma = nn.Parameter(torch.zeros(1))
 
     def compute_proba(self, state, action):
         # Returns probability of action according to current policy and distribution of actions
@@ -100,8 +100,8 @@ class PPO:
     def __init__(self, state_dim, action_dim):
         self.actor = Actor(state_dim, action_dim)
         self.critic = Critic(state_dim)
-        self.actor_optim = Adam(self.actor.parameters(), ACTOR_LR, eps=1e-5)
-        self.critic_optim = Adam(self.critic.parameters(), CRITIC_LR, eps=1e-5)
+        self.actor_optim = Adam(self.actor.parameters(), ACTOR_LR)
+        self.critic_optim = Adam(self.critic.parameters(), CRITIC_LR)
 
     def update(self, trajectories):
         transitions = [t for traj in trajectories for t in traj] # Turn a list of trajectories into list of transitions
