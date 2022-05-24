@@ -12,7 +12,6 @@ if RENDER:
     env.render()
 env.reset()
 agent = Agent()
-print(agent.sigma)
 rewards = np.zeros(EPISODES)
 for i in range(EPISODES):
     state = env.reset()

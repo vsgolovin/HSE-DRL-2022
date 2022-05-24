@@ -62,21 +62,26 @@ class Actor(nn.Module):
             nn.Tanh(),
             layer_init(nn.Linear(64, 64)),
             nn.Tanh(),
-            layer_init(nn.Linear(64, action_dim), std=0.01)
+            layer_init(nn.Linear(64, action_dim * 2), std=0.01)
         )
-        self.log_sigma = nn.Parameter(torch.zeros(1))
 
+    def _compute_mu_sigma(self, state):
+        output = self.model(state)
+        mu = output[..., :self.action_dim]
+        sigma = torch.exp(output[..., self.action_dim:])
+        return mu, sigma
+ 
     def compute_proba(self, state, action):
         # Returns probability of action according to current policy and distribution of actions
-        mu = self.model(state)
-        distr = Normal(mu, torch.exp(self.log_sigma))
+        mu, sigma = self._compute_mu_sigma(state)
+        distr = Normal(mu, sigma)
         return torch.exp(distr.log_prob(action).sum(-1)), distr
 
     def act(self, state):
         # Returns an action (with tanh), not-transformed action (without tanh) and distribution of non-transformed actions
         # Remember: agent is not deterministic, sample actions from distribution (e.g. Gaussian)
-        mu = self.model(state)
-        distr = Normal(mu, torch.exp(self.log_sigma))
+        mu, sigma = self._compute_mu_sigma(state)
+        distr = Normal(mu, sigma)
         action = distr.sample()
         return torch.tanh(action), action, distr
 
@@ -163,7 +168,7 @@ class PPO:
         return action.cpu().numpy()[0], pure_action.cpu().numpy()[0], prob.cpu().item()
 
     def save(self):
-        torch.save((self.actor.model, self.actor.log_sigma), "agent.pkl")
+        torch.save(self.actor.model, "agent.pkl")
 
 
 def evaluate_policy(env, agent, episodes=5):

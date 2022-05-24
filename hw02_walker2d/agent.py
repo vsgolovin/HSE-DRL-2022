@@ -5,14 +5,16 @@ from torch.distributions import Normal
 
 class Agent:
     def __init__(self):
-        self.model, log_sigma = torch.load(__file__[:-8] + "/agent.pkl")
-        self.sigma = torch.nn.Parameter(torch.exp(log_sigma.detach()))
+        self.model = torch.load(__file__[:-8] + "/agent.pkl")
 
     def act(self, state):
         with torch.no_grad():
             state = torch.tensor(np.array(state)).float()
-            mu = self.model(state)
-            dist = Normal(mu, self.sigma)
+            output = self.model(state)
+            action_dim = output.size(-1) // 2
+            mu = output[..., :action_dim]
+            sigma = torch.exp(output[..., action_dim:])
+            dist = Normal(mu, sigma)
             return torch.tanh(dist.sample().squeeze()).cpu().numpy()
 
     def reset(self):
