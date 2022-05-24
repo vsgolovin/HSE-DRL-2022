@@ -7,6 +7,7 @@ from torch import nn
 from torch.distributions import Normal
 from torch.nn import functional as F
 from torch.optim import Adam
+from torch.optim.lr_scheduler import LambdaLR
 import random
 
 ENV_NAME = "Walker2DBulletEnv-v0"
@@ -14,8 +15,9 @@ ENV_NAME = "Walker2DBulletEnv-v0"
 LAMBDA = 0.95
 GAMMA = 0.99
 
-ACTOR_LR = 2e-4
-CRITIC_LR = 1e-4
+ACTOR_LR = 2e-4 / 2
+CRITIC_LR = 1e-4 / 2
+LR_START_FACTOR = 4
 
 CLIP = 0.2
 ENTROPY_COEF = None
@@ -70,7 +72,7 @@ class Actor(nn.Module):
         mu = output[..., :self.action_dim]
         sigma = torch.exp(output[..., self.action_dim:])
         return mu, sigma
- 
+
     def compute_proba(self, state, action):
         # Returns probability of action according to current policy and distribution of actions
         mu, sigma = self._compute_mu_sigma(state)
@@ -213,6 +215,11 @@ if __name__ == "__main__":
     episodes_sampled = 0
     steps_sampled = 0
 
+    actor_scheduler = LambdaLR(
+        ppo.actor_optim, lambda n: LR_START_FACTOR*(ITERATIONS - n) / ITERATIONS)
+    critic_scheduler = LambdaLR(
+        ppo.critic_optim, lambda n: LR_START_FACTOR*(ITERATIONS - n) / ITERATIONS)
+
     for i in range(ITERATIONS):
         trajectories = []
         steps_ctn = 0
@@ -225,6 +232,8 @@ if __name__ == "__main__":
         steps_sampled += steps_ctn
 
         ppo.update(trajectories)
+        actor_scheduler.step()
+        critic_scheduler.step()
 
         if (i + 1) % (ITERATIONS//100) == 0:
             rewards = evaluate_policy(env, ppo, 10)
