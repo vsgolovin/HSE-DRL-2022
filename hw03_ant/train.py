@@ -13,11 +13,12 @@ GAMMA = 0.99
 TAU = 0.002
 CRITIC_LR = 5e-4
 ACTOR_LR = 2e-4
-DEVICE = "cuda"
+DEVICE = "cpu"
 BATCH_SIZE = 128
 ENV_NAME = "AntBulletEnv-v0"
 TRANSITIONS = 1000000
 NOISE_CLIP = 0.5
+DELAY = 2
 
 
 def soft_update(target, source):
@@ -63,8 +64,8 @@ class TD3:
         self.critic_2 = Critic(state_dim, action_dim).to(DEVICE)
 
         self.actor_optim = Adam(self.actor.parameters(), lr=ACTOR_LR)
-        self.critic_1_optim = Adam(self.critic_1.parameters(), lr=ACTOR_LR)
-        self.critic_2_optim = Adam(self.critic_2.parameters(), lr=ACTOR_LR)
+        self.critic_1_optim = Adam(self.critic_1.parameters(), lr=CRITIC_LR)
+        self.critic_2_optim = Adam(self.critic_2.parameters(), lr=CRITIC_LR)
 
         self.target_actor = copy.deepcopy(self.actor)
         self.target_critic_1 = copy.deepcopy(self.critic_1)
@@ -73,9 +74,8 @@ class TD3:
         self.replay_buffer = deque(maxlen=200000)
         self.eps = eps
 
-    def update(self, transition):
+    def update(self, transition, t):
         self.replay_buffer.append(transition)
-        critic_loss_fn = nn.MSELoss()
         if len(self.replay_buffer) > BATCH_SIZE * 16:
 
             # Sample batch
@@ -101,8 +101,8 @@ class TD3:
                     self.target_critic_2(next_state, noisy_a)
                 )
             # update both critics
-            critic_1_loss = critic_loss_fn(self.critic_1(state, action), y)
-            critic_2_loss = critic_loss_fn(self.critic_2(state, action), y)
+            critic_1_loss = F.mse_loss(self.critic_1(state, action), y)
+            critic_2_loss = F.mse_loss(self.critic_2(state, action), y)
             self.critic_1_optim.zero_grad()
             self.critic_2_optim.zero_grad()
             critic_1_loss.backward()
@@ -111,14 +111,15 @@ class TD3:
             self.critic_2_optim.step()
 
             # Update actor
-            Q1 = -torch.mean(self.critic_1(state, self.actor(state)))
-            self.actor_optim.zero_grad()
-            Q1.backward()
-            self.actor_optim.step()
+            if t % DELAY == 0:
+                Q1 = -torch.mean(self.critic_1(state, self.actor(state)))
+                self.actor_optim.zero_grad()
+                Q1.backward()
+                self.actor_optim.step()
 
-            soft_update(self.target_critic_1, self.critic_1)
-            soft_update(self.target_critic_2, self.critic_2)
-            soft_update(self.target_actor, self.actor)
+                soft_update(self.target_critic_1, self.critic_1)
+                soft_update(self.target_critic_2, self.critic_2)
+                soft_update(self.target_actor, self.actor)
 
     def act(self, state):
         with torch.no_grad():
@@ -143,14 +144,26 @@ def evaluate_policy(env, agent, episodes=5):
     return returns
 
 
-def get_eps(i: int) -> float:
+def get_eps(t: int) -> float:
     "Current policy stochasticity as a function of iteration number"
-    return 0.2
+    return 0.3 - t / TRANSITIONS * 0.2
 
 
 if __name__ == "__main__":
+    SEED = 42
+    random.seed(SEED)
+    np.random.seed(SEED)
+    torch.manual_seed(SEED)
+    torch.use_deterministic_algorithms(True)
+
     env = make(ENV_NAME)
+    env.seed(SEED)
+    env.action_space.seed(SEED)
+
     test_env = make(ENV_NAME)
+    test_env.seed(SEED)
+    test_env.action_space.seed(SEED)
+
     td3 = TD3(state_dim=env.observation_space.shape[0], action_dim=env.action_space.shape[0])
     state = env.reset()
     episodes_sampled = 0
@@ -167,7 +180,7 @@ if __name__ == "__main__":
         action = np.clip(action + noise, -1, +1)
 
         next_state, reward, done, _ = env.step(action)
-        td3.update((state, action, next_state, reward, done))
+        td3.update((state, action, next_state, reward, done), i)
 
         state = next_state if not done else env.reset()
 
