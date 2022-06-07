@@ -91,9 +91,9 @@ class TD3:
             with torch.no_grad():
                 # compute target actions
                 a = self.target_actor(next_state)
-                noise = torch.clamp(
-                    self.eps * torch.randn(a.size(), device=DEVICE),
-                    -NOISE_CLIP, NOISE_CLIP)
+                noise = self.eps * torch.randn(a.size(), device=DEVICE)
+                if NOISE_CLIP:
+                    noise = torch.clamp(noise, -NOISE_CLIP, NOISE_CLIP)
                 noisy_a = torch.clamp(a + noise, -1, 1)
                 # compute targets
                 y = reward + GAMMA * (1 - done) * torch.min(
@@ -163,10 +163,8 @@ if __name__ == "__main__":
         eps = get_eps(i)
         td3.eps = eps
         action = td3.act(state)
-        action = np.clip(
-            action + np.clip(eps * np.random.randn(*action.shape),
-                             -NOISE_CLIP, NOISE_CLIP),
-            -1, +1)
+        noise = eps * np.random.randn(*action.shape)
+        action = np.clip(action + noise, -1, +1)
 
         next_state, reward, done, _ = env.step(action)
         td3.update((state, action, next_state, reward, done))
