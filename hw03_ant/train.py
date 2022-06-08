@@ -9,12 +9,12 @@ from torch.optim import Adam
 import random
 import copy
 
-GAMMA = 0.99
-TAU = 0.002
-CRITIC_LR = 5e-4
-ACTOR_LR = 2e-4
+GAMMA = 0.98
+TAU = 0.005
+CRITIC_LR = 1e-3
+ACTOR_LR = 1e-3
 DEVICE = "cpu"
-BATCH_SIZE = 128
+BATCH_SIZE = 100
 ENV_NAME = "AntBulletEnv-v0"
 TRANSITIONS = 1000000
 NOISE_CLIP = 0.5
@@ -30,11 +30,11 @@ class Actor(nn.Module):
     def __init__(self, state_dim, action_dim):
         super().__init__()
         self.model = nn.Sequential(
-            nn.Linear(state_dim, 256),
+            nn.Linear(state_dim, 400),
             nn.ELU(),
-            nn.Linear(256, 256),
+            nn.Linear(400, 300),
             nn.ELU(),
-            nn.Linear(256, action_dim),
+            nn.Linear(300, action_dim),
             nn.Tanh()
         )
 
@@ -46,11 +46,11 @@ class Critic(nn.Module):
     def __init__(self, state_dim, action_dim):
         super().__init__()
         self.model = nn.Sequential(
-            nn.Linear(state_dim + action_dim, 256),
+            nn.Linear(state_dim + action_dim, 400),
             nn.ELU(),
-            nn.Linear(256, 256),
+            nn.Linear(400, 300),
             nn.ELU(),
-            nn.Linear(256, 1)
+            nn.Linear(300, 1)
         )
 
     def forward(self, state, action):
@@ -146,7 +146,7 @@ def evaluate_policy(env, agent, episodes=5):
 
 def get_eps(t: int) -> float:
     "Current policy stochasticity as a function of iteration number"
-    return 0.3 - t / TRANSITIONS * 0.2
+    return 0.1
 
 
 if __name__ == "__main__":
@@ -168,16 +168,19 @@ if __name__ == "__main__":
     state = env.reset()
     episodes_sampled = 0
     steps_sampled = 0
+    best_reward = 0
 
     for i in range(TRANSITIONS):
         steps = 0
 
         # Epsilon-greedy policy
-        eps = get_eps(i)
-        td3.eps = eps
-        action = td3.act(state)
-        noise = eps * np.random.randn(*action.shape)
-        action = np.clip(action + noise, -1, +1)
+        if i < 10000:
+            action = env.action_space.sample()
+        else:
+            eps = get_eps(i)
+            action = td3.act(state)
+            noise = eps * np.random.randn(*action.shape)
+            action = np.clip(action + noise, -1, +1)
 
         next_state, reward, done, _ = env.step(action)
         td3.update((state, action, next_state, reward, done), i)
@@ -185,6 +188,9 @@ if __name__ == "__main__":
         state = next_state if not done else env.reset()
 
         if (i + 1) % (TRANSITIONS//100) == 0:
-            rewards = evaluate_policy(test_env, td3, 5)
+            rewards = evaluate_policy(test_env, td3, 10)
             print(f"Step: {i+1}, Reward mean: {np.mean(rewards)}, Reward std: {np.std(rewards)}")
-            td3.save()
+            low_lim = np.mean(rewards) - np.std(rewards)
+            if low_lim > best_reward:
+                best_reward = low_lim
+                td3.save()

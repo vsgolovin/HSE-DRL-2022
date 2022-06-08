@@ -20,7 +20,7 @@ for i in range(EPISODES):
         action = agent.act(state)
         state, reward, done, _ = env.step(action)
         rewards[i] += reward
-#    print(rewards[i])
+    # print(rewards[i])
 env.close()
 
 print('Reward:')
